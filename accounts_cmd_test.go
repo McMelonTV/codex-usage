@@ -44,3 +44,21 @@ func TestShouldUpsertMatchedAccount_PlanMismatchAfterRecheckSkipsUpsert(t *testi
 		t.Fatalf("unexpected reason: %q", reason)
 	}
 }
+
+func TestCodexAuthTypeFilters(t *testing.T) {
+	cases := []struct {
+		kind string
+		want bool
+	}{
+		{"chatgpt", true},
+		{"apikey", true},
+		{"API_KEY", true},
+		{"opencode-go", false},
+		{"", false},
+	}
+	for _, tc := range cases {
+		if got := codexAuthType(tc.kind); got != tc.want {
+			t.Fatalf("codexAuthType(%q) = %v, want %v", tc.kind, got, tc.want)
+		}
+	}
+}

@@ -18,6 +18,8 @@ type authData struct {
 	AccessToken  *string `json:"access_token,omitempty"`
 	RefreshToken *string `json:"refresh_token,omitempty"`
 	AccountID    *string `json:"account_id,omitempty"`
+	WorkspaceID  *string `json:"workspace_id,omitempty"`
+	AuthCookie   *string `json:"auth_cookie,omitempty"`
 }
 
 type rateLimitStatusPayload struct {
@@ -58,20 +60,24 @@ type resetCreditDetail struct {
 	RedeemedAt      string `json:"redeemed_at"`
 }
 
+type usageWindow struct {
+	Label       string
+	Summary     string
+	UsedPercent *float64
+}
+
 type usageRow struct {
-	Name          string
-	Email         string
-	Plan          string
-	Primary       string
-	Secondary     string
-	ResetCredits  string
-	SortName      string
-	PrimaryUsed   *float64
-	SecondaryUsed *float64
+	Name         string
+	Email        string
+	Plan         string
+	Windows      []usageWindow
+	ResetCredits string
+	SortName     string
 }
 
 type accountResult struct {
 	Index          int
+	StoreIndex     int
 	Row            usageRow
 	Updated        storedAccount
 	TokenRefreshed bool

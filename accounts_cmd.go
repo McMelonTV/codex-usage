@@ -21,6 +21,8 @@ func runAccountsCommand(args []string) int {
 		return runAccountsList(args[1:])
 	case "login":
 		return runAccountsLogin(args[1:])
+	case "add-opencode-go":
+		return runAccountsAddOpenCodeGo(args[1:])
 	case "remove":
 		return runAccountsRemove(args[1:])
 	case "rename":
@@ -336,6 +338,7 @@ func printAccountsCommandUsage() {
 	fmt.Println("Usage:")
 	fmt.Println("  codex-usage accounts list [--accounts-file path]")
 	fmt.Println("  codex-usage accounts login [--accounts-file path] [--name name] [--timeout seconds] [--no-browser] [--auth-flow device|browser]")
+	fmt.Println("  codex-usage accounts add-opencode-go [--accounts-file path] [--name name] --workspace-id id --auth-cookie cookie")
 	fmt.Println("  codex-usage accounts remove [--accounts-file path] <id-or-name>")
 	fmt.Println("  codex-usage accounts rename [--accounts-file path] <id-or-name> <new-name>")
 }

@@ -41,7 +41,7 @@ func main() {
 	}
 
 	client := &http.Client{Timeout: time.Duration(*timeout) * time.Second}
-	rows, err := collectUsageRows(*accountsPath, client)
+	rows, err := collectAllUsage(client, newProviders(*accountsPath))
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "error:", err)
 		os.Exit(1)

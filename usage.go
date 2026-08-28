@@ -2,35 +2,60 @@ package main
 
 import (
 	"net/http"
-	"sort"
 	"strings"
 	"sync"
 	"time"
 )
 
-func collectUsageRows(accountsPath string, client *http.Client) ([]usageRow, error) {
-	store, err := loadAccounts(accountsPath)
+type codexUsageProvider struct {
+	accountsPath string
+}
+
+func (codexUsageProvider) ID() string { return "codex" }
+
+func codexAuthType(kind string) bool {
+	switch normalizeAuthType(kind) {
+	case "apikey", "chatgpt":
+		return true
+	default:
+		return false
+	}
+}
+
+func (p codexUsageProvider) collect(client *http.Client) ([]usageRow, error) {
+	store, err := loadAccounts(p.accountsPath)
 	if err != nil {
 		return nil, err
 	}
 
-	rows := make([]usageRow, len(store.Accounts))
-	results := make(chan accountResult, len(store.Accounts))
+	type codexAccount struct {
+		storeIndex int
+		account    storedAccount
+	}
+	var codexAccounts []codexAccount
+	for i := range store.Accounts {
+		if codexAuthType(store.Accounts[i].AuthData.Type) {
+			codexAccounts = append(codexAccounts, codexAccount{storeIndex: i, account: store.Accounts[i]})
+		}
+	}
+
+	rows := make([]usageRow, len(codexAccounts))
+	results := make(chan accountResult, len(codexAccounts))
 
 	var wg sync.WaitGroup
-	for i := range store.Accounts {
+	for i := range codexAccounts {
 		wg.Add(1)
-		acc := store.Accounts[i]
-		go func(idx int, account storedAccount) {
+		storeIndex := codexAccounts[i].storeIndex
+		acc := codexAccounts[i].account
+		go func(idx, storeIndex int, account storedAccount) {
 			defer wg.Done()
 
 			row := usageRow{
 				Name:         account.Name,
 				Email:        valueOrDash(account.Email),
 				Plan:         valueOrDash(account.PlanType),
-				Primary:      "-",
-				Secondary:    "-",
-				ResetCredits: "-",
+				Windows:      naWindows(),
+				ResetCredits: "n/a",
 				SortName:     strings.ToLower(account.Name),
 			}
 
@@ -39,16 +64,10 @@ func collectUsageRows(accountsPath string, client *http.Client) ([]usageRow, err
 
 			switch normalizeAuthType(account.AuthData.Type) {
 			case "apikey":
-				row.Primary = "n/a"
-				row.Secondary = "n/a"
-				row.ResetCredits = "n/a"
 			case "chatgpt":
 				refreshedAcc, changed, refreshErr := ensureFreshTokens(account, client)
 				if refreshErr != nil {
-					row.Primary = "n/a"
-					row.Secondary = "n/a"
-					row.ResetCredits = "n/a"
-					results <- accountResult{Index: idx, Row: row, Updated: updated}
+					results <- accountResult{Index: idx, StoreIndex: storeIndex, Row: row, Updated: updated}
 					return
 				}
 
@@ -57,33 +76,26 @@ func collectUsageRows(accountsPath string, client *http.Client) ([]usageRow, err
 
 				usage, usageErr := fetchUsage(updated, client)
 				if usageErr != nil {
-					row.Primary = "n/a"
-					row.Secondary = "n/a"
-					row.ResetCredits = "n/a"
-					results <- accountResult{Index: idx, Row: row, Updated: updated, TokenRefreshed: tokenRefreshed}
+					results <- accountResult{Index: idx, StoreIndex: storeIndex, Row: row, Updated: updated, TokenRefreshed: tokenRefreshed}
 					return
 				}
 
 				row.Plan = firstNonEmpty(usage.PlanType, row.Plan)
 				now := time.Now()
-				row.Primary = limitSummary(usage.RateLimit, true, now)
-				row.Secondary = limitSummary(usage.RateLimit, false, now)
-				row.PrimaryUsed = windowUsedPercent(usage.RateLimit, true)
-				row.SecondaryUsed = windowUsedPercent(usage.RateLimit, false)
+				row.Windows = []usageWindow{
+					{Label: "5H", Summary: limitSummary(usage.RateLimit, true, now), UsedPercent: windowUsedPercent(usage.RateLimit, true)},
+					{Label: "WEEKLY", Summary: limitSummary(usage.RateLimit, false, now), UsedPercent: windowUsedPercent(usage.RateLimit, false)},
+				}
 				resetCredits, resetCreditsErr := fetchResetCredits(updated, client)
 				if resetCreditsErr != nil {
 					row.ResetCredits = "unavailable"
 				} else {
 					row.ResetCredits = resetCreditsSummary(resetCredits, now)
 				}
-			default:
-				row.Primary = "n/a"
-				row.Secondary = "n/a"
-				row.ResetCredits = "n/a"
 			}
 
-			results <- accountResult{Index: idx, Row: row, Updated: updated, TokenRefreshed: tokenRefreshed}
-		}(i, acc)
+			results <- accountResult{Index: idx, StoreIndex: storeIndex, Row: row, Updated: updated, TokenRefreshed: tokenRefreshed}
+		}(i, storeIndex, acc)
 	}
 
 	wg.Wait()
@@ -93,17 +105,23 @@ func collectUsageRows(accountsPath string, client *http.Client) ([]usageRow, err
 	for result := range results {
 		rows[result.Index] = result.Row
 		if result.TokenRefreshed {
-			store.Accounts[result.Index] = result.Updated
+			store.Accounts[result.StoreIndex] = result.Updated
 			needsSave = true
 		}
 	}
 
 	if needsSave {
-		if err := saveAccounts(accountsPath, store); err != nil {
+		if err := saveAccounts(p.accountsPath, store); err != nil {
 			return nil, err
 		}
 	}
 
-	sort.Slice(rows, func(i, j int) bool { return rows[i].SortName < rows[j].SortName })
 	return rows, nil
+}
+
+func naWindows() []usageWindow {
+	return []usageWindow{
+		{Label: "5H", Summary: "n/a"},
+		{Label: "WEEKLY", Summary: "n/a"},
+	}
 }

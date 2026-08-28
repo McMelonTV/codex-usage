@@ -15,24 +15,71 @@ func printTable(rows []usageRow) {
 		fmt.Println("No accounts found.")
 		return
 	}
+	fmt.Print(colorizeTableOutput(applyUsageColors(buildTable(rows), rows)))
+}
+
+func buildTable(rows []usageRow) string {
+	labels := tableWindowLabels(rows)
+	showResetCredits := hasResetCredits(rows)
 
 	var b bytes.Buffer
 	w := tabwriter.NewWriter(&b, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(w, "ACCOUNT\tEMAIL\tPLAN\t5H LIMIT\tWEEKLY LIMIT\tRESET CREDITS")
+	header := "ACCOUNT\tEMAIL\tPLAN"
+	for _, label := range labels {
+		header += "\t" + label
+	}
+	if showResetCredits {
+		header += "\tRESET CREDITS"
+	}
+	fmt.Fprintln(w, header)
 	for _, r := range rows {
-		fmt.Fprintf(
-			w,
-			"%s\t%s\t%s\t%s\t%s\t%s\n",
-			r.Name,
-			r.Email,
-			r.Plan,
-			r.Primary,
-			r.Secondary,
-			r.ResetCredits,
-		)
+		fmt.Fprintf(w, "%s\t%s\t%s", r.Name, r.Email, r.Plan)
+		for _, label := range labels {
+			fmt.Fprintf(w, "\t%s", windowSummary(r, label))
+		}
+		if showResetCredits {
+			credits := r.ResetCredits
+			if credits == "" {
+				credits = "-"
+			}
+			fmt.Fprintf(w, "\t%s", credits)
+		}
+		fmt.Fprintln(w)
 	}
 	_ = w.Flush()
-	fmt.Print(colorizeTableOutput(applyUsageColors(b.String(), rows)))
+	return b.String()
+}
+
+func tableWindowLabels(rows []usageRow) []string {
+	var labels []string
+	seen := make(map[string]bool)
+	for _, r := range rows {
+		for _, win := range r.Windows {
+			if !seen[win.Label] {
+				seen[win.Label] = true
+				labels = append(labels, win.Label)
+			}
+		}
+	}
+	return labels
+}
+
+func windowSummary(row usageRow, label string) string {
+	for _, win := range row.Windows {
+		if win.Label == label {
+			return win.Summary
+		}
+	}
+	return "-"
+}
+
+func hasResetCredits(rows []usageRow) bool {
+	for _, r := range rows {
+		if r.ResetCredits != "" {
+			return true
+		}
+	}
+	return false
 }
 
 func limitSummary(rl *rateLimitDetails, primary bool, now time.Time) string {
@@ -257,9 +304,23 @@ func applyUsageColors(tableText string, rows []usageRow) string {
 	for i := 0; i < rowCount; i++ {
 		lineIndex := i + 1
 		line := lines[lineIndex]
-		line = strings.Replace(line, rows[i].Primary, colorizeUsage(rows[i].Primary, rows[i].PrimaryUsed), 1)
-		line = strings.Replace(line, rows[i].Secondary, colorizeUsage(rows[i].Secondary, rows[i].SecondaryUsed), 1)
-		line = replaceLast(line, rows[i].ResetCredits, colorizeResetCreditsSummary(rows[i].ResetCredits))
+		pos := 0
+		for _, win := range rows[i].Windows {
+			if win.Summary == "" || win.Summary == "-" || win.Summary == "n/a" {
+				continue
+			}
+			idx := strings.Index(line[pos:], win.Summary)
+			if idx < 0 {
+				continue
+			}
+			start := pos + idx
+			colored := colorizeUsage(win.Summary, win.UsedPercent)
+			line = line[:start] + colored + line[start+len(win.Summary):]
+			pos = start + len(colored)
+		}
+		if rows[i].ResetCredits != "" {
+			line = replaceLast(line, rows[i].ResetCredits, colorizeResetCreditsSummary(rows[i].ResetCredits))
+		}
 		lines[lineIndex] = line
 	}
 

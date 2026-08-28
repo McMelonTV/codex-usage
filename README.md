@@ -49,12 +49,47 @@ An account can be identified by its name, email, or ID. Add `--show-used` to inc
 ```text
 codex-usage accounts list
 codex-usage accounts login [--name name] [--no-browser] [--auth-flow device|browser]
+codex-usage accounts add-opencode-go [--name name] --workspace-id id --auth-cookie cookie
 codex-usage accounts remove <id-or-name>
 codex-usage accounts rename <id-or-name> <new-name>
 codex-usage resets [--show-used] <account-name-email-or-id>
 ```
 
 Use `--accounts-file path` to choose a different accounts file or `--timeout seconds` to change the request timeout. By default, accounts are stored in `~/.config/codex-usage/accounts.json`.
+
+## OpenCode Go usage
+
+The CLI also checks your [OpenCode Go](https://opencode.ai) workspace quota (rolling ~5h, weekly, and monthly windows) alongside your Codex accounts.
+
+Manage workspaces like any other account:
+
+```bash
+./codex-usage accounts add-opencode-go --name "My Workspace" --workspace-id <id> --auth-cookie <cookie>
+./codex-usage accounts list
+```
+
+`accounts list`, `remove`, and `rename` work for these workspaces too, and the auth cookie is stored in the same `accounts.json` file (created with `0600` permissions).
+
+Alternatively, configure a single workspace with environment variables:
+
+```bash
+export OPENCODE_GO_WORKSPACE_ID="your-workspace-id"
+export OPENCODE_GO_AUTH_COOKIE="your-opencode-auth-cookie"
+```
+
+Or with a config file, stored next to your opencode CLI config:
+
+```json
+// ~/.config/opencode/opencode-quota/opencode-go.json
+{
+  "workspaceId": "your-workspace-id",
+  "authCookie": "your-opencode-auth-cookie"
+}
+```
+
+Find the workspace ID in your dashboard URL (`https://opencode.ai/workspace/<workspace-id>/go`) and the auth cookie in your browser's developer tools after logging in at [opencode.ai](https://opencode.ai). If only one of the two settings is present, the CLI prints which one is missing.
+
+When OpenCode Go is configured, a row for the workspace is added to the usage table. If it isn't configured, the CLI silently skips it. Stored accounts take precedence over the environment variables and config file.
 
 ## Android app ("AI Usage Widgets")
 
